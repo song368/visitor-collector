@@ -106,8 +106,11 @@ def list_visitors():
     return jsonify(result)
 
 
+# 模块加载时即建表（关键：Render 用 gunicorn app:app 启动，不会走下面的 if __name__ 分支，
+# 必须在这里建表，否则数据库表不存在，访问接口会报 500）
+init_db()
+
 if __name__ == '__main__':
-    init_db()  # 启动时确保表已存在
     # 端口从环境变量读取：Render 会注入 PORT；本地默认 5000
     port = int(os.getenv('PORT', 5000))
     # host=0.0.0.0 让容器/云平台上外部能访问；debug=True 仅本地开发方便
