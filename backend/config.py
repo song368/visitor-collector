@@ -16,3 +16,14 @@ class Config:
         'CORS_ORIGINS',
         'http://localhost:3000'
     ).split(',')
+
+    # ---- 管理后台登录（V2 安全增强）----
+    # 管理员用户名 / 密码：生产环境务必在平台上设置环境变量覆盖默认值，别用默认值上线
+    ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'admin')
+    ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', 'admin123')
+
+    # 签发登录令牌(JWT) 用的密钥：务必改成一个足够长的随机字符串
+    SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-change-me-in-prod')
+
+    # 登录令牌有效期（小时），默认 7 天；到期后需重新登录
+    TOKEN_EXPIRE_HOURS = int(os.getenv('TOKEN_EXPIRE_HOURS', 24 * 7))

@@ -6,7 +6,10 @@
 
 import os
 import sqlite3
+import datetime
+import functools
 
+import jwt
 from flask import Flask, request, jsonify, g
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -67,6 +70,51 @@ def health():
     return jsonify({'status': 'ok'})
 
 
+# ---------- 管理员登录与鉴权（V2 安全增强）----------
+def _issue_token():
+    """签发一个带过期时间的登录令牌(JWT)。"""
+    payload = {
+        'sub': 'admin',                                     # 主题：管理员
+        'exp': datetime.datetime.now(datetime.timezone.utc)
+               + datetime.timedelta(hours=Config.TOKEN_EXPIRE_HOURS),  # 过期时间
+    }
+    return jwt.encode(payload, Config.SECRET_KEY, algorithm='HS256')
+
+
+def require_auth(view):
+    """装饰器：给需要登录才能访问的接口加锁。没带有效令牌就返回 401。"""
+    @functools.wraps(view)
+    def wrapped(*args, **kwargs):
+        # 从请求头拿令牌：格式 "Authorization: Bearer <token>"
+        auth = request.headers.get('Authorization', '')
+        token = auth.split(' ')[-1] if auth.startswith('Bearer ') else ''
+        try:
+            jwt.decode(token, Config.SECRET_KEY, algorithms=['HS256'])
+        except Exception:
+            # 缺令牌 / 令牌错误 / 已过期，一律拒绝
+            return jsonify({'message': '未登录或登录已过期'}), 401
+        return view(*args, **kwargs)
+    return wrapped
+
+
+@app.route('/api/admin/login', methods=['POST'])
+def admin_login():
+    """管理后台登录：用户名+密码正确则签发令牌，前端保存后用于访问受保护接口。"""
+    data = request.get_json(silent=True) or {}
+    username = (data.get('username') or '').strip()
+    password = (data.get('password') or '').strip()
+
+    # 用配置的管理员账号密码比对（生产环境应从环境变量注入）
+    if username != Config.ADMIN_USERNAME or password != Config.ADMIN_PASSWORD:
+        return jsonify({'message': '用户名或密码错误'}), 401
+
+    return jsonify({
+        'message': 'ok',
+        'token': _issue_token(),
+        'expires_hours': Config.TOKEN_EXPIRE_HOURS,
+    }), 200
+
+
 @app.route('/api/visitors', methods=['POST'])
 def add_visitor():
     """新增访客记录。"""
@@ -94,6 +142,7 @@ def add_visitor():
 
 
 @app.route('/api/visitors', methods=['GET'])
+@require_auth  # V2：查询所有记录必须管理员登录，防止陌生人看数据
 def list_visitors():
     """返回所有访客记录（按 id 倒序，最新的在前）。"""
     db = get_db()
